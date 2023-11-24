@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"log"
+	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
@@ -23,17 +25,17 @@ func main() {
         log.Panic("failed to connect to rabbitmq")
     }
 
-    defer conn.Close()
+    defer conn.Close() // the connection will close when main() returns
 
-    ch, err := conn.Channel()
+    consumerCh, err := conn.Channel()
 
     if err != nil {
         log.Panic("failed to open channel")
     }
 
-    defer ch.Close()
+    defer consumerCh.Close() // the channel will close when main() returns
 
-    err = ch.ExchangeDeclare(
+    err = consumerCh.ExchangeDeclare(
         "test.exchange",     // name
         "direct",   // type
         true,       // durable
@@ -47,8 +49,8 @@ func main() {
         log.Panic("exchange declare failed")
     }
 
-    q, err := ch.QueueDeclare(
-        "test.queue",
+    q, err := consumerCh.QueueDeclare(
+        "test.consumer.queue",
         false,
         false,
         true,
@@ -60,7 +62,7 @@ func main() {
         log.Panic("failed to declare queue")
     }
 
-    err = ch.QueueBind(
+    err = consumerCh.QueueBind(
         q.Name,
         "test.message.created",
         "test.exchange",
@@ -72,7 +74,29 @@ func main() {
         log.Panic("failed to bind queue")
     }
 
-    msgs, err := ch.Consume(
+    producerCh, err := conn.Channel()
+
+    if err != nil {
+        log.Panic("failed to open producer channel")
+    }
+
+    defer producerCh.Close() // the channel will close when main() returns
+
+    err = producerCh.ExchangeDeclare(
+        "test.exchange",     // name
+        "direct",   // type
+        true,       // durable
+        false,      // autodelete
+        false,      // internal
+        false,      // no-wait
+        nil,        // args
+    )
+
+    if err != nil {
+        log.Panic("exchange declare failed")
+    }
+
+    msgs, err := consumerCh.Consume(
         q.Name,
         "",
         true,
@@ -86,7 +110,11 @@ func main() {
         log.Panic("failed to register consumer")
     }
 
-    var forever chan struct{}
+    forever := make(chan struct{})
+    
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+
+    defer cancel()
 
     go func() {
         for d := range msgs {
@@ -116,9 +144,25 @@ func main() {
             }
 
             log.Printf("parsed crazy message: %s", wildData)
+
+            err = producerCh.PublishWithContext(
+                ctx,
+                "test.exchange",
+                "test.message.consumed",
+                false, // mandatory
+                false, // immediate
+                amqp.Publishing{
+                    DeliveryMode: amqp.Persistent,
+                    ContentType: "text/plain",
+                    Body: (msg.Data),
+                },
+            )
+            if err != nil {
+                log.Fatalf("Error publishing message: %s", err)
+            }
         }
     }()
 
-    <- forever // what is this syntax??
+    <- forever 
         
 }
