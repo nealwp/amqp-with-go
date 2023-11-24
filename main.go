@@ -18,6 +18,35 @@ type TestMessage struct {
     Hello string `json:"hello"`
 }
 
+
+const (
+
+    ConsumerAutoack = false
+    ConsumerKey = "test.message.created"
+    ConsumerName = "test.consumer.queue"
+
+    DeadletterExchangeName = "test.exchange.deadletter"
+    DeadletterQueue = "test.consumer.deadletter.queue"
+
+    ExchangeAutodelete = false
+    ExchangeDurable = true
+    ExchangeInteral = false
+    ExchangeName = "test.exchange"
+    ExchangeNowait = false
+    ExchangeType = "direct"
+
+    PublisherKey = "test.message.consumed"
+    PublisherMandatory = false
+    PublisherImmediate = false
+    QueueAutodelete = false
+    QueueDurable = true 
+    QueueExclusive = false
+    QueueNolocal = false
+    QueueNowait = false
+    QueueType = "quorum"
+
+)
+
 func main() {
     conn, err := amqp.Dial("amqp://guest:guest@localhost:5672/")
 
@@ -36,13 +65,13 @@ func main() {
     defer consumerCh.Close() // the channel will close when main() returns
 
     err = consumerCh.ExchangeDeclare(
-        "test.exchange",     // name
-        "direct",   // type
-        true,       // durable
-        false,      // autodelete
-        false,      // internal
-        false,      // no-wait
-        nil,        // args
+        ExchangeName,
+        ExchangeType,
+        ExchangeDurable,
+        ExchangeAutodelete,
+        ExchangeInteral,
+        ExchangeNowait,
+        nil, // args
     )
 
     if err != nil {
@@ -50,13 +79,13 @@ func main() {
     }
 
     err = consumerCh.ExchangeDeclare(
-        "test.exchange.deadletter",     // name
-        "direct",   // type
-        true,       // durable
-        false,      // autodelete
-        false,      // internal
-        false,      // no-wait
-        nil,        // args
+        DeadletterExchangeName,
+        ExchangeType,
+        ExchangeDurable,
+        ExchangeAutodelete,
+        ExchangeInteral,
+        ExchangeNowait,
+        nil,
     )
 
     if err != nil {
@@ -64,15 +93,15 @@ func main() {
     }
 
     q, err := consumerCh.QueueDeclare(
-        "test.consumer.queue",
-        true, // durable
-        false, // autodelete
-        false, // exclusive
-        false, // no wait
+        ConsumerName,
+        QueueDurable,
+        QueueAutodelete,
+        QueueExclusive,
+        QueueNowait,
         amqp.Table{
-            "x-queue-type": "quorum",
-            "x-dead-letter-exchange": "test.exchange.deadletter",
-            "x-dead-letter-routing-key": "test.message.created",
+            "x-queue-type": QueueType,
+            "x-deadletter-exchange": DeadletterExchangeName,
+            "x-deadletter-routing-key": ConsumerKey,
         },
     )
 
@@ -83,9 +112,9 @@ func main() {
 
     err = consumerCh.QueueBind(
         q.Name,
-        "test.message.created",
-        "test.exchange",
-        false,
+        ConsumerKey,
+        ExchangeName,
+        QueueNowait,
         nil,
     )
 
@@ -94,15 +123,13 @@ func main() {
     }
 
     dlq, err := consumerCh.QueueDeclare(
-        "test.consumer.deadletter.queue",
-        true, // durable
-        false, // autodelete
-        false, // exclusive
-        false, // no wait
+        DeadletterQueue,
+        QueueDurable,
+        QueueAutodelete,
+        QueueExclusive,
+        QueueNowait,
         amqp.Table{
-            "x-queue-type": "quorum",
-            "x-dead-letter-exchange": "test.exchange.deadletter",
-            "x-dead-letter-routing-key": "test.message.created",
+            "x-queue-type": QueueType,
         },
     )
 
@@ -112,9 +139,9 @@ func main() {
 
     err = consumerCh.QueueBind(
         dlq.Name,
-        "test.message.created",
-        "test.exchange.deadletter",
-        false,
+        ConsumerKey,
+        DeadletterExchangeName,
+        QueueNowait,
         nil,
     )
 
@@ -131,13 +158,13 @@ func main() {
     defer producerCh.Close() // the channel will close when main() returns
 
     err = producerCh.ExchangeDeclare(
-        "test.exchange",     // name
-        "direct",   // type
-        true,       // durable
-        false,      // autodelete
-        false,      // internal
-        false,      // no-wait
-        nil,        // args
+        ExchangeName,
+        ExchangeType,
+        ExchangeDurable,
+        ExchangeAutodelete,
+        ExchangeInteral,
+        ExchangeNowait,
+        nil, // args
     )
 
     if err != nil {
@@ -146,11 +173,11 @@ func main() {
 
     msgs, err := consumerCh.Consume(
         q.Name,
-        "",
-        false,
-        false,
-        false,
-        false,
+        "", // consumer
+        ConsumerAutoack,
+        QueueExclusive,
+        QueueNolocal,
+        QueueNowait,
         nil,
     )
 
@@ -204,19 +231,19 @@ func main() {
 
             log.Printf("parsed message: %s", data)
 
-
             err = producerCh.PublishWithContext(
                 ctx,
-                "test.exchange",
-                "test.message.consumed",
-                false, // mandatory
-                false, // immediate
+                ExchangeName,
+                PublisherKey,
+                PublisherMandatory,
+                PublisherImmediate,
                 amqp.Publishing{
                     DeliveryMode: amqp.Persistent,
                     ContentType: "text/plain",
                     Body: (msg.Data),
                 },
             )
+            
             if err != nil {
                 log.Fatalf("Error publishing message: %s", err)
             }
