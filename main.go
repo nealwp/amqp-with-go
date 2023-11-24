@@ -100,8 +100,8 @@ func main() {
         QueueNowait,
         amqp.Table{
             "x-queue-type": QueueType,
-            "x-deadletter-exchange": DeadletterExchangeName,
-            "x-deadletter-routing-key": ConsumerKey,
+            "x-dead-letter-exchange": DeadletterExchangeName,
+            "x-dead-letter-routing-key": ConsumerKey,
         },
     )
 
